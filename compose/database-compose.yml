@@ -37,7 +37,14 @@ services:
     restart: unless-stopped
     tty: true
     stdin_open: true
+    networks:
+      - crm-shared-network
 
 volumes:
   pgdata:
     driver: local
+
+networks:
+  crm-shared-network:
+    external: true
+    name: shared-network

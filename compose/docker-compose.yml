@@ -1,0 +1,110 @@
+services:
+  backend:
+    build:
+      context: ../backend/
+      dockerfile: Dockerfile
+    container_name: crm_backend
+    environment:
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+    ports:
+      - "8000:8000"
+    networks:
+      - crm-shared-network
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3.2
+    command: start-dev
+    container_name: keycloak
+    environment:
+      - KEYCLOAK_ADMIN=${KC_ADMIN_LOGIN}
+      - KEYCLOAK_ADMIN_PASSWORD=${KC_ADMIN_PASSWORD}
+      - KC_DB=postgres
+      - KC_DB_URL_HOST=${DB_HOST}
+      - KC_DB_URL_PORT=${DB_PORT}
+      - KC_DB_URL_DATABASE=${DB_NAME}
+      - KC_DB_USERNAME=${DB_USER}
+      - KC_DB_PASSWORD=${DB_PASS}
+      - KC_HOSTNAME=tele.savebit.ru
+      - KC_HOSTNAME_STRICT=false
+      - KC_PROXY=edge
+    ports:
+      - "8080:8080"
+    restart: always
+    networks:
+      - crm-shared-network
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+      POSTGRES_DB: ${DB_NAME}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${DB_PORT}:5432"
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data/pgdata
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    command: >
+      postgres -c max_connections=1000
+               -c shared_buffers=256MB
+               -c effective_cache_size=768MB
+               -c maintenance_work_mem=64MB
+               -c checkpoint_completion_target=0.7
+               -c wal_buffers=16MB
+               -c default_statistics_target=100
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    networks:
+      - crm-shared-network
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../nginx/conf.d:/etc/nginx/conf.d
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/conf:/etc/letsencrypt
+    depends_on:
+      - backend
+      - keycloak
+    networks:
+      - crm-shared-network
+  # certbot:
+  #   image: certbot/certbot
+  #   container_name: certbot
+  #   volumes:
+  #     - ./certbot/www:/var/www/certbot
+  #     - ./certbot/conf:/etc/letsencrypt
+  #   networks:
+  #     - crm-shared-network
+
+# docker compose -f compose/docker-compose.yml --env-file .env run --rm certbot certonly --webroot   --webroot-path=/var/www/certbot   -d tele.savebit.ru -d www.tele.savebit.ru
+#   --email khasanknyazev81@gmail.com   --agree-tos --no-eff-email
+
+volumes:
+  pgdata:
+    driver: local
+
+networks:
+  crm-shared-network:
+    driver: bridge

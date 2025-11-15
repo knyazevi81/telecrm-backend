@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 @dataclass
 class Settings:
-    title: str
+    title: str = "TeleCRM Backend"
 
 
 class Config(BaseSettings):
